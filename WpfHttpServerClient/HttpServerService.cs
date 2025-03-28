@@ -1,12 +1,12 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;               // Для доступа к Application.Current.Dispatcher
-using System.Windows.Threading;     // Для DispatcherTimer
+using System.Windows;
+using System.Windows.Threading;
+using System.Diagnostics;
 using WpfHttpServerClient.DTOs;
 using WpfHttpServerClient.Entities;
 using WpfHttpServerClient.ViewModels;
@@ -50,87 +50,103 @@ namespace WpfHttpServerClient
             while (!token.IsCancellationRequested)
             {
                 var context = await _listener.GetContextAsync();
+                // Для каждого запроса вызываем ProcessRequest
+                // Можно обрабатывать параллельно, если потребуется
                 ProcessRequest(context);
             }
         }
 
         private void ProcessRequest(HttpListenerContext context)
         {
+            // Запускаем измерение времени обработки запроса
+            var sw = Stopwatch.StartNew();
+            // Извлекаем метод и путь запроса
             string method = context.Request.HttpMethod.ToUpper();
             string path = context.Request.Url.AbsolutePath.ToLower();
 
-            // Увеличиваем общий счётчик запросов
-            Interlocked.Increment(ref processedRequestCount);
-
-            // Обработка запросов по URL
-            if (path == "/count" && method == "GET")
+            try
             {
-                AddMethodViewModel(method);
+                // Увеличиваем общий счётчик запросов
+                Interlocked.Increment(ref processedRequestCount);
 
-                context.Response.StatusCode = 200;
-                int answer = GetProcessedRequestCount();
-
-                context.Response.ContentType = "text/plain";
-                using (var writer = new StreamWriter(context.Response.OutputStream))
+                // Обработка запросов по URL
+                if (path == "/count" && method == "GET")
                 {
-                    writer.Write(answer);
-                    writer.Flush();
-                }
+                    AddMethodViewModel(method);
 
-                context.Response.Close();
+                    context.Response.StatusCode = 200;
+                    int answer = GetProcessedRequestCount();
+
+                    context.Response.ContentType = "text/plain";
+                    using (var writer = new StreamWriter(context.Response.OutputStream))
+                    {
+                        writer.Write(answer);
+                        writer.Flush();
+                    }
+                    context.Response.Close();
+                }
+                else if (path == "/time" && method == "GET")
+                {
+                    AddMethodViewModel(method);
+
+                    context.Response.StatusCode = 200;
+                    string answer = GetWorkTime();
+
+                    context.Response.ContentType = "text/plain";
+                    using (var writer = new StreamWriter(context.Response.OutputStream))
+                    {
+                        writer.Write(answer);
+                        writer.Flush();
+                    }
+                    context.Response.Close();
+                }
+                else if (path == "/add" && method == "POST")
+                {
+                    AddMethodViewModel(method);
+
+                    context.Response.StatusCode = 201;
+
+                    string json;
+                    using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
+                    {
+                        json = reader.ReadToEnd();
+                    }
+
+                    MessageDTO messageDTO = JsonSerializer.Deserialize<MessageDTO>(json);
+                    Message message = new()
+                    {
+                        Id = ViewModel.Messages.Count == 0 ? 1 : ViewModel.Messages[ViewModel.Messages.Count - 1].Id + 1,
+                        Text = messageDTO!.Text
+                    };
+                    using (var writer = new StreamWriter(context.Response.OutputStream))
+                    {
+                        writer.Write(message.Id);
+                        writer.Flush();
+                    }
+                    ViewModel.Messages.Add(message);
+
+                    context.Response.Close();
+                }
+                else
+                {
+                    context.Response.StatusCode = 404;
+                    using (var writer = new StreamWriter(context.Response.OutputStream))
+                    {
+                        writer.Write("Not Found");
+                        writer.Flush();
+                    }
+                    context.Response.Close();
+                }
             }
-            else if (path == "/time" && method == "GET")
+            finally
             {
-                AddMethodViewModel(method);
-
-                context.Response.StatusCode = 200;
-                string answer = GetWorkTime();
-
-                context.Response.ContentType = "text/plain";
-                using (var writer = new StreamWriter(context.Response.OutputStream))
+                // Останавливаем секундомер и обновляем статистику по времени обработки
+                sw.Stop();
+                Application.Current.Dispatcher.Invoke(() =>
                 {
-                    writer.Write(answer);
-                    writer.Flush();
-                }
-
-                context.Response.Close();
-            }
-            else if (path == "/add" && method == "POST")
-            {
-                AddMethodViewModel(method);
-
-                context.Response.StatusCode = 201;
-
-                string json;
-                using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
-                {
-                    json = reader.ReadToEnd();
-                }
-
-                MessageDTO messageDTO = JsonSerializer.Deserialize<MessageDTO>(json);
-                Message message = new()
-                {
-                    Id = ViewModel.Messages.Count == 0 ? 1 : ViewModel.Messages[ViewModel.Messages.Count - 1].Id + 1,
-                    Text = messageDTO!.Text
-                };
-                using (var writer = new StreamWriter(context.Response.OutputStream))
-                {
-                    writer.Write(message.Id);
-                    writer.Flush();
-                }
-                ViewModel.Messages.Add(message);
-
-                context.Response.Close();
-            }
-            else
-            {
-                context.Response.StatusCode = 404;
-                using (var writer = new StreamWriter(context.Response.OutputStream))
-                {
-                    writer.Write("Not Found");
-                    writer.Flush();
-                }
-                context.Response.Close();
+                    if (ViewModel != null)
+                        ViewModel.AddRequestTime(method, sw.Elapsed);
+                });
             }
         }
 

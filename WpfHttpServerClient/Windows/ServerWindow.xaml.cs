@@ -16,11 +16,11 @@ namespace WpfHttpServerClient.Windows
         {
             InitializeComponent();
 
-            // Отобразим порт (пример)
-            TextBlock_Port.Text += port.ToString();
-
             // Создаем и устанавливаем ViewModel как DataContext
-            _viewModel = new ServerViewModel();
+            _viewModel = new ServerViewModel
+            {
+                Port = port // Передаем порт в модель
+            };
             DataContext = _viewModel;
 
             // Создаем сервер и передаем ему ViewModel для обновления статистики
