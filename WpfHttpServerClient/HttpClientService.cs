@@ -35,9 +35,20 @@ public class HttpClientService
 
     public async Task<string> SendPostRequestAsync(HttpRequestMessage request)
     {
-        HttpResponseMessage response = await _client.PostAsync(request.RequestUri, request.Content);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync();
+        try
+        {
+            HttpResponseMessage response = await _client.PostAsync(request.RequestUri, request.Content);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsStringAsync();
+        }
+        catch (HttpRequestException ex)
+        {
+            return $"Ошибка HTTP: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            return $"Ошибка: {ex.Message}";
+        }
     }
 
     public void Dispose()

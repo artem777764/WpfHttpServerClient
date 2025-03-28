@@ -6,7 +6,32 @@
         xmlns:local="clr-namespace:WpfHttpServerClient.Windows"
         mc:Ignorable="d"
         Title="ServerWindow" Height="450" Width="800">
-    <Grid>
-        <TextBlock Name="TextBlock_Port" Text="Сервер"/>
+    <Grid Margin="20">
+        <StackPanel>
+            <!-- Заголовок и базовая статистика -->
+            <TextBlock Name="TextBlock_Port" Text="Сервер " FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/>
+            <TextBlock Text="Порт:" FontSize="14"/>
+            <!-- Можно привязать порт, если он есть в ViewModel, иначе оставить статическим -->
+            <TextBlock Text="{Binding Port}" FontSize="14" />
+            <TextBlock Text="GET Count:" FontSize="14"/>
+            <TextBlock Text="{Binding GetCount}" FontSize="14"/>
+            <TextBlock Text="POST Count:" FontSize="14"/>
+            <TextBlock Text="{Binding PostCount}" FontSize="14"/>
+            <TextBlock Text="Total Count:" FontSize="14"/>
+            <TextBlock Text="{Binding TotalCount}" FontSize="14"/>
+            <TextBlock Text="Work Time:" FontSize="14"/>
+            <TextBlock Text="{Binding WorkTime}" FontSize="14"/>
+
+            <!-- DataGrid для отображения сообщений -->
+            <DataGrid ItemsSource="{Binding Messages}"
+                      AutoGenerateColumns="False"
+                      Margin="0,10,0,0"
+                      Height="200">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="Auto"/>
+                    <DataGridTextColumn Header="Text" Binding="{Binding Text}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </StackPanel>
     </Grid>
 </Window>

@@ -49,29 +49,13 @@ namespace WpfHttpServerClient.Windows
 
                 if (string.IsNullOrEmpty(jsonInput))
                 {
-                    TextBlock_Response.Text = "Поле JSON пустое. Пожалуйста, введите корректный JSON.";
+                    TextBlock_Response.Text = "Поле JSON пустое.";
                     return;
                 }
-
-                try
-                {
-                    using var doc = JsonDocument.Parse(jsonInput);
-                }
-                catch (JsonException ex)
-                {
-                    TextBlock_Response.Text = "Неверный формат JSON: " + ex.Message;
-                    return;
-                }
-
-                MessageDTO message = new()
-                {
-                    Text = jsonInput
-                };
-                var jsonBody = JsonSerializer.Serialize(message);
 
                 HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url)
                 {
-                    Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+                    Content = new StringContent(jsonInput, Encoding.UTF8, "application/json")
                 };
 
                 TextBlock_Response.Text = await _client.SendPostRequestAsync(request);

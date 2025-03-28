@@ -1,36 +1,34 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
+using WpfHttpServerClient.ViewModels;
 
 namespace WpfHttpServerClient.Windows
 {
-    /// <summary>
-    /// Логика взаимодействия для ServerWindow.xaml
-    /// </summary>
     public partial class ServerWindow : Window
     {
         private readonly HttpServerService _server;
-        private CancellationTokenSource _cancellationTokenSource;
+        private readonly CancellationTokenSource _cancellationTokenSource;
+        private readonly ServerViewModel _viewModel;
 
         public ServerWindow(int port)
         {
             InitializeComponent();
 
+            // Отобразим порт (пример)
             TextBlock_Port.Text += port.ToString();
 
-            _server = new HttpServerService(port);
+            // Создаем и устанавливаем ViewModel как DataContext
+            _viewModel = new ServerViewModel();
+            DataContext = _viewModel;
+
+            // Создаем сервер и передаем ему ViewModel для обновления статистики
+            _server = new HttpServerService(port)
+            {
+                ViewModel = _viewModel
+            };
+
             _cancellationTokenSource = new CancellationTokenSource();
 
             StartServer();

@@ -2,116 +2,167 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Text.Json;
+using System.Windows;               // Для доступа к Application.Current.Dispatcher
+using System.Windows.Threading;     // Для DispatcherTimer
 using WpfHttpServerClient.DTOs;
 using WpfHttpServerClient.Entities;
+using WpfHttpServerClient.ViewModels;
 
-namespace WpfHttpServerClient;
-
-public class HttpServerService
+namespace WpfHttpServerClient
 {
-    private int processedRequestCount = 0;
-    private readonly HttpListener _listener = new HttpListener();
-    private readonly DateTime _startTime = DateTime.Now;
-    private List<Message> messages = new List<Message>();
-
-    public HttpServerService(int port)
+    public class HttpServerService
     {
-        _listener.Prefixes.Add($"http://localhost:{port}/");
-    }
+        private int processedRequestCount = 0;
+        private readonly HttpListener _listener = new HttpListener();
+        private readonly DateTime _startTime = DateTime.Now;
 
-    public async Task StartAsync(CancellationToken token)
-    {
-        _listener.Start();
-        while (!token.IsCancellationRequested)
+        // ViewModel для отображения статистики в UI
+        public ServerViewModel ViewModel { get; set; }
+
+        // Таймер для обновления времени работы
+        private readonly DispatcherTimer _timer;
+
+        public HttpServerService(int port)
         {
-            var context = await _listener.GetContextAsync();
-            ProcessRequest(context);
+            _listener.Prefixes.Add($"http://localhost:{port}/");
+
+            // Инициализируем таймер: обновляем каждую секунду
+            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _timer.Tick += Timer_Tick;
+            _timer.Start();
         }
-    }
 
-    private void ProcessRequest(HttpListenerContext context)
-    {
-        Interlocked.Increment(ref processedRequestCount);
-
-        string method = context.Request.HttpMethod.ToUpper();
-        string path = context.Request.Url.AbsolutePath.ToLower();
-
-        if (path == "/count" && method == "GET")
+        private void Timer_Tick(object sender, EventArgs e)
         {
-            context.Response.StatusCode = 200;
-            int answer = GetProsessedRequestCount();
-
-            context.Response.ContentType = "text/plain";
-            using (var writer = new StreamWriter(context.Response.OutputStream))
+            if (ViewModel != null)
             {
-                writer.Write(answer);
-                writer.Flush();
+                // Обновляем время работы сервера
+                ViewModel.WorkTime = (DateTime.Now - _startTime).ToString(@"hh\:mm\:ss");
             }
-
-            context.Response.Close();
         }
-        else if (path == "/time" && method == "GET")
+
+        public async Task StartAsync(CancellationToken token)
         {
-            context.Response.StatusCode = 200;
-            string answer = GetWorkTime();
-
-            context.Response.ContentType = "text/plain";
-            using (var writer = new StreamWriter(context.Response.OutputStream))
+            _listener.Start();
+            while (!token.IsCancellationRequested)
             {
-                writer.Write(answer);
-                writer.Flush();
+                var context = await _listener.GetContextAsync();
+                ProcessRequest(context);
             }
-
-            context.Response.Close();
         }
-        else if (path == "/add" && method == "POST")
+
+        private void ProcessRequest(HttpListenerContext context)
         {
-            context.Response.StatusCode = 201;
+            string method = context.Request.HttpMethod.ToUpper();
+            string path = context.Request.Url.AbsolutePath.ToLower();
 
-            string json;
-            using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
+            // Увеличиваем общий счётчик запросов
+            Interlocked.Increment(ref processedRequestCount);
+
+            // Обработка запросов по URL
+            if (path == "/count" && method == "GET")
             {
-                json = reader.ReadToEnd();
+                AddMethodViewModel(method);
+
+                context.Response.StatusCode = 200;
+                int answer = GetProcessedRequestCount();
+
+                context.Response.ContentType = "text/plain";
+                using (var writer = new StreamWriter(context.Response.OutputStream))
+                {
+                    writer.Write(answer);
+                    writer.Flush();
+                }
+
+                context.Response.Close();
             }
+            else if (path == "/time" && method == "GET")
+            {
+                AddMethodViewModel(method);
 
-            MessageDTO messageDTO = JsonSerializer.Deserialize<MessageDTO>(json);
-            Message message = new()
-            {
-                Id = messages.Count == 0 ? 1 : messages[messages.Count - 1].Id + 1,
-                Text = messageDTO!.Text
-            };
-            using (var writer = new StreamWriter(context.Response.OutputStream))
-            {
-                writer.Write(message.Id);
-                writer.Flush();
+                context.Response.StatusCode = 200;
+                string answer = GetWorkTime();
+
+                context.Response.ContentType = "text/plain";
+                using (var writer = new StreamWriter(context.Response.OutputStream))
+                {
+                    writer.Write(answer);
+                    writer.Flush();
+                }
+
+                context.Response.Close();
             }
+            else if (path == "/add" && method == "POST")
+            {
+                AddMethodViewModel(method);
 
-            messages.Add(message);
-            context.Response.Close();
+                context.Response.StatusCode = 201;
+
+                string json;
+                using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
+                {
+                    json = reader.ReadToEnd();
+                }
+
+                MessageDTO messageDTO = JsonSerializer.Deserialize<MessageDTO>(json);
+                Message message = new()
+                {
+                    Id = ViewModel.Messages.Count == 0 ? 1 : ViewModel.Messages[ViewModel.Messages.Count - 1].Id + 1,
+                    Text = messageDTO!.Text
+                };
+                using (var writer = new StreamWriter(context.Response.OutputStream))
+                {
+                    writer.Write(message.Id);
+                    writer.Flush();
+                }
+                ViewModel.Messages.Add(message);
+
+                context.Response.Close();
+            }
+            else
+            {
+                context.Response.StatusCode = 404;
+                using (var writer = new StreamWriter(context.Response.OutputStream))
+                {
+                    writer.Write("Not Found");
+                    writer.Flush();
+                }
+                context.Response.Close();
+            }
         }
-        else
+
+        private void AddMethodViewModel(string method)
         {
-            context.Response.StatusCode = 404;
-            using (var writer = new StreamWriter(context.Response.OutputStream))
+            if (method == "GET")
             {
-                writer.Write("Not Found");
-                writer.Flush();
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (ViewModel != null)
+                        ViewModel.GetCount++;
+                });
             }
-
-            context.Response.Close();
+            else if (method == "POST")
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (ViewModel != null)
+                        ViewModel.PostCount++;
+                });
+            }
         }
-    }
 
-    private int GetProsessedRequestCount()
-    {
-        return processedRequestCount;
-    }
+        // Если ViewModel установлена, используем её для общего количества
+        private int GetProcessedRequestCount()
+        {
+            return ViewModel != null ? ViewModel.TotalCount : processedRequestCount;
+        }
 
-    private string GetWorkTime()
-    {
-        return (DateTime.Now - _startTime).ToString();
+        private string GetWorkTime()
+        {
+            return (DateTime.Now - _startTime).ToString(@"hh\:mm\:ss");
+        }
     }
 }
