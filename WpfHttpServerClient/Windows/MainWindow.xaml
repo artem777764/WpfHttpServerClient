@@ -1,0 +1,15 @@
+﻿<Window x:Class="WpfHttpServerClient.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:WpfHttpServerClient.Windows"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="450" Width="300">
+    <Grid>
+        <Button Name="Button_Server" Content="Сервер" Width="180" Height="60" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,120,0,0" Click="Button_Server_Click"/>
+        <TextBox Name="TextBox_Port" Text="4221" Width="60" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,180,0,0"/>
+
+        <Button Name="Button_Client" Content="Клиент" Width="180" Height="60" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,250,0,0" Click="Button_Client_Click"/>
+    </Grid>
+</Window>
