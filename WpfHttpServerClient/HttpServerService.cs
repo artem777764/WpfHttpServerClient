@@ -18,18 +18,12 @@ namespace WpfHttpServerClient
         private int processedRequestCount = 0;
         private readonly HttpListener _listener = new HttpListener();
         private readonly DateTime _startTime = DateTime.Now;
-
-        // ViewModel для отображения статистики в UI
         public ServerViewModel ViewModel { get; set; }
-
-        // Таймер для обновления времени работы
         private readonly DispatcherTimer _timer;
 
         public HttpServerService(int port)
         {
             _listener.Prefixes.Add($"http://localhost:{port}/");
-
-            // Инициализируем таймер: обновляем каждую секунду
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _timer.Tick += Timer_Tick;
             _timer.Start();
@@ -39,7 +33,6 @@ namespace WpfHttpServerClient
         {
             if (ViewModel != null)
             {
-                // Обновляем время работы сервера
                 ViewModel.WorkTime = (DateTime.Now - _startTime).ToString(@"hh\:mm\:ss");
             }
         }
@@ -50,70 +43,68 @@ namespace WpfHttpServerClient
             while (!token.IsCancellationRequested)
             {
                 var context = await _listener.GetContextAsync();
-                // Для каждого запроса вызываем ProcessRequest
-                // Можно обрабатывать параллельно, если потребуется
                 ProcessRequest(context);
             }
         }
 
         private void ProcessRequest(HttpListenerContext context)
         {
-            // Запускаем измерение времени обработки запроса
             var sw = Stopwatch.StartNew();
-            // Извлекаем метод и путь запроса
             string method = context.Request.HttpMethod.ToUpper();
             string path = context.Request.Url.AbsolutePath.ToLower();
-
+            AddMethodViewModel(method);
             try
             {
-                // Увеличиваем общий счётчик запросов
-                Interlocked.Increment(ref processedRequestCount);
-
-                // Обработка запросов по URL
-                if (path == "/count" && method == "GET")
+                if (path == "/count")
                 {
-                    AddMethodViewModel(method);
-
+                    if (method != "GET")
+                    {
+                        context.Response.StatusCode = 405;
+                        WriteResponse(context, "Method Not Allowed");
+                        return;
+                    }
                     context.Response.StatusCode = 200;
                     int answer = GetProcessedRequestCount();
-
                     context.Response.ContentType = "text/plain";
                     using (var writer = new StreamWriter(context.Response.OutputStream))
                     {
                         writer.Write(answer);
                         writer.Flush();
                     }
-                    context.Response.Close();
                 }
-                else if (path == "/time" && method == "GET")
+                else if (path == "/time")
                 {
-                    AddMethodViewModel(method);
-
+                    if (method != "GET")
+                    {
+                        context.Response.StatusCode = 405;
+                        WriteResponse(context, "Method Not Allowed");
+                        return;
+                    }
                     context.Response.StatusCode = 200;
                     string answer = GetWorkTime();
-
                     context.Response.ContentType = "text/plain";
                     using (var writer = new StreamWriter(context.Response.OutputStream))
                     {
                         writer.Write(answer);
                         writer.Flush();
                     }
-                    context.Response.Close();
                 }
-                else if (path == "/add" && method == "POST")
+                else if (path == "/add")
                 {
-                    AddMethodViewModel(method);
-
+                    if (method != "POST")
+                    {
+                        context.Response.StatusCode = 405;
+                        WriteResponse(context, "Method Not Allowed");
+                        return;
+                    }
                     context.Response.StatusCode = 201;
-
                     string json;
                     using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
                     {
                         json = reader.ReadToEnd();
                     }
-
                     MessageDTO messageDTO = JsonSerializer.Deserialize<MessageDTO>(json);
-                    Message message = new()
+                    Message message = new Message
                     {
                         Id = ViewModel.Messages.Count == 0 ? 1 : ViewModel.Messages[ViewModel.Messages.Count - 1].Id + 1,
                         Text = messageDTO!.Text
@@ -124,29 +115,37 @@ namespace WpfHttpServerClient
                         writer.Flush();
                     }
                     ViewModel.Messages.Add(message);
-
-                    context.Response.Close();
                 }
                 else
                 {
                     context.Response.StatusCode = 404;
-                    using (var writer = new StreamWriter(context.Response.OutputStream))
-                    {
-                        writer.Write("Not Found");
-                        writer.Flush();
-                    }
-                    context.Response.Close();
+                    WriteResponse(context, "Not Found");
                 }
+            }
+            catch (Exception)
+            {
+                context.Response.StatusCode = 500;
+                WriteResponse(context, "Internal Server Error");
             }
             finally
             {
-                // Останавливаем секундомер и обновляем статистику по времени обработки
                 sw.Stop();
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     if (ViewModel != null)
                         ViewModel.AddRequestTime(method, sw.Elapsed);
                 });
+                context.Response.Close();
+            }
+        }
+
+        private void WriteResponse(HttpListenerContext context, string responseText)
+        {
+            context.Response.ContentType = "text/plain";
+            using (var writer = new StreamWriter(context.Response.OutputStream))
+            {
+                writer.Write(responseText);
+                writer.Flush();
             }
         }
 
@@ -170,7 +169,6 @@ namespace WpfHttpServerClient
             }
         }
 
-        // Если ViewModel установлена, используем её для общего количества
         private int GetProcessedRequestCount()
         {
             return ViewModel != null ? ViewModel.TotalCount : processedRequestCount;
