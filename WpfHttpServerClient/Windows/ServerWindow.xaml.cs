@@ -15,22 +15,16 @@ namespace WpfHttpServerClient.Windows
         public ServerWindow(int port)
         {
             InitializeComponent();
-
-            // Создаем и устанавливаем ViewModel как DataContext
             _viewModel = new ServerViewModel
             {
-                Port = port // Передаем порт в модель
+                Port = port
             };
             DataContext = _viewModel;
-
-            // Создаем сервер и передаем ему ViewModel для обновления статистики
             _server = new HttpServerService(port)
             {
                 ViewModel = _viewModel
             };
-
             _cancellationTokenSource = new CancellationTokenSource();
-
             StartServer();
         }
 

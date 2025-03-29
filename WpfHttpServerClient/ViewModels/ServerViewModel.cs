@@ -1,19 +1,14 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Windows.Input;
 using WpfHttpServerClient.Entities;
 
 namespace WpfHttpServerClient.ViewModels
 {
     public class ServerViewModel : INotifyPropertyChanged
     {
-        // Новое свойство для хранения номера порта
-        private int _port;
-        public int Port
-        {
-            get => _port;
-            set { _port = value; OnPropertyChanged("Port"); }
-        }
+        public int Port { get; set; }
 
         private int _getCount;
         public int GetCount
@@ -54,16 +49,12 @@ namespace WpfHttpServerClient.ViewModels
 
         public ObservableCollection<Message> Messages { get; } = new();
 
-        // Суммарное время обработки в миллисекундах для GET и POST
         private double _getTotalTime;
         private double _postTotalTime;
-
-        // Свойства для среднего времени (в миллисекундах)
         public double GetAverageTime => GetCount > 0 ? _getTotalTime / GetCount : 0;
         public double PostAverageTime => PostCount > 0 ? _postTotalTime / PostCount : 0;
         public double TotalAverageTime => TotalCount > 0 ? (_getTotalTime + _postTotalTime) / TotalCount : 0;
 
-        // Метод для накопления времени обработки запроса
         public void AddRequestTime(string method, TimeSpan elapsed)
         {
             if (method.Equals("GET", StringComparison.OrdinalIgnoreCase))
@@ -79,7 +70,67 @@ namespace WpfHttpServerClient.ViewModels
             OnPropertyChanged("TotalAverageTime");
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        // Новая коллекция логов
+        public ObservableCollection<LoggedRequestResponse> Logs { get; } = new();
+
+        // Коллекция отфильтрованных логов, к которой привязан DataGrid
+        public ObservableCollection<LoggedRequestResponse> FilteredLogs { get; } = new();
+
+        private string _selectedMethodFilter = "All";
+        public string SelectedMethodFilter
+        {
+            get => _selectedMethodFilter;
+            set { _selectedMethodFilter = value; OnPropertyChanged("SelectedMethodFilter"); FilterLogs(); }
+        }
+
+        private string _statusCodeFilter = "";
+        public string StatusCodeFilter
+        {
+            get => _statusCodeFilter;
+            set { _statusCodeFilter = value; OnPropertyChanged("StatusCodeFilter"); FilterLogs(); }
+        }
+
+        public ICommand SaveLogsCommand { get; }
+
+        public ServerViewModel()
+        {
+            SaveLogsCommand = new RelayCommand(_ => SaveLogs());
+        }
+
+        private void SaveLogs()
+        {
+            try
+            {
+                string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                string filePath = System.IO.Path.Combine(desktopPath, "logs.json");
+
+                var json = System.Text.Json.JsonSerializer.Serialize(Logs);
+                System.IO.File.WriteAllText(filePath, json);
+            }
+            catch (Exception ex)
+            {
+
+            }
+        }
+
+        public void FilterLogs()
+        {
+            FilteredLogs.Clear();
+            foreach (var log in Logs)
+            {
+                bool methodMatches = SelectedMethodFilter == "All" || 
+                    log.Request.Method.Equals(SelectedMethodFilter, StringComparison.OrdinalIgnoreCase);
+                bool statusMatches = true;
+                if (!string.IsNullOrWhiteSpace(StatusCodeFilter) && int.TryParse(StatusCodeFilter, out int code))
+                {
+                    statusMatches = log.Response.StatusCode == code;
+                }
+                if (methodMatches && statusMatches)
+                    FilteredLogs.Add(log);
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged(string propertyName) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }

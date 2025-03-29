@@ -10,6 +10,8 @@ using System.Diagnostics;
 using WpfHttpServerClient.DTOs;
 using WpfHttpServerClient.Entities;
 using WpfHttpServerClient.ViewModels;
+using System.Collections.Generic;
+using System.Collections.Specialized;
 
 namespace WpfHttpServerClient
 {
@@ -52,6 +54,20 @@ namespace WpfHttpServerClient
             var sw = Stopwatch.StartNew();
             string method = context.Request.HttpMethod.ToUpper();
             string path = context.Request.Url.AbsolutePath.ToLower();
+            string responseText = "";
+            string? requestBody = null;
+            if (method == "POST")
+            {
+                // Попробуем считать тело запроса, если оно ещё не было прочитано
+                try
+                {
+                    using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
+                    {
+                        requestBody = reader.ReadToEnd();
+                    }
+                }
+                catch { }
+            }
             AddMethodViewModel(method);
             try
             {
@@ -60,76 +76,94 @@ namespace WpfHttpServerClient
                     if (method != "GET")
                     {
                         context.Response.StatusCode = 405;
-                        WriteResponse(context, "Method Not Allowed");
+                        responseText = "Method Not Allowed";
+                        WriteResponse(context, responseText);
                         return;
                     }
                     context.Response.StatusCode = 200;
                     int answer = GetProcessedRequestCount();
+                    responseText = answer.ToString();
                     context.Response.ContentType = "text/plain";
-                    using (var writer = new StreamWriter(context.Response.OutputStream))
-                    {
-                        writer.Write(answer);
-                        writer.Flush();
-                    }
+                    WriteResponse(context, responseText);
                 }
                 else if (path == "/time")
                 {
                     if (method != "GET")
                     {
                         context.Response.StatusCode = 405;
-                        WriteResponse(context, "Method Not Allowed");
+                        responseText = "Method Not Allowed";
+                        WriteResponse(context, responseText);
                         return;
                     }
                     context.Response.StatusCode = 200;
-                    string answer = GetWorkTime();
+                    responseText = GetWorkTime();
                     context.Response.ContentType = "text/plain";
-                    using (var writer = new StreamWriter(context.Response.OutputStream))
-                    {
-                        writer.Write(answer);
-                        writer.Flush();
-                    }
+                    WriteResponse(context, responseText);
                 }
                 else if (path == "/add")
                 {
                     if (method != "POST")
                     {
                         context.Response.StatusCode = 405;
-                        WriteResponse(context, "Method Not Allowed");
+                        responseText = "Method Not Allowed";
+                        WriteResponse(context, responseText);
                         return;
                     }
                     context.Response.StatusCode = 201;
-                    string json;
-                    using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
-                    {
-                        json = reader.ReadToEnd();
-                    }
+                    // При вызове /add тело уже прочитано выше
+                    string json = requestBody ?? "";
                     MessageDTO messageDTO = JsonSerializer.Deserialize<MessageDTO>(json);
                     Message message = new Message
                     {
                         Id = ViewModel.Messages.Count == 0 ? 1 : ViewModel.Messages[ViewModel.Messages.Count - 1].Id + 1,
                         Text = messageDTO!.Text
                     };
-                    using (var writer = new StreamWriter(context.Response.OutputStream))
-                    {
-                        writer.Write(message.Id);
-                        writer.Flush();
-                    }
+                    responseText = message.Id.ToString();
+                    context.Response.ContentType = "text/plain";
+                    WriteResponse(context, responseText);
                     ViewModel.Messages.Add(message);
                 }
                 else
                 {
                     context.Response.StatusCode = 404;
-                    WriteResponse(context, "Not Found");
+                    responseText = "Not Found";
+                    WriteResponse(context, responseText);
                 }
             }
             catch (Exception)
             {
                 context.Response.StatusCode = 500;
-                WriteResponse(context, "Internal Server Error");
+                responseText = "Internal Server Error";
+                WriteResponse(context, responseText);
             }
             finally
             {
                 sw.Stop();
+                var loggedRequest = new LoggedRequest
+                {
+                    URL = context.Request.Url.ToString(),
+                    Method = method,
+                    Headers = ConvertHeaders(context.Request.Headers),
+                    Body = requestBody
+                };
+                var loggedResponse = new LoggedResponse
+                {
+                    StatusCode = context.Response.StatusCode,
+                    Answer = responseText
+                };
+                var logEntry = new LoggedRequestResponse
+                {
+                    Request = loggedRequest,
+                    Response = loggedResponse
+                };
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (ViewModel != null)
+                    {
+                        ViewModel.Logs.Add(logEntry);
+                        ViewModel.FilterLogs();
+                    }
+                });
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     if (ViewModel != null)
@@ -137,6 +171,16 @@ namespace WpfHttpServerClient
                 });
                 context.Response.Close();
             }
+        }
+
+        private Dictionary<string, string> ConvertHeaders(NameValueCollection headers)
+        {
+            var dict = new Dictionary<string, string>();
+            foreach (string key in headers.AllKeys)
+            {
+                dict[key] = headers[key];
+            }
+            return dict;
         }
 
         private void WriteResponse(HttpListenerContext context, string responseText)
